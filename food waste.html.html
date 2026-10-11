@@ -1,0 +1,1765 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FreshTrack – Food Waste Reduction & Expiry Management System</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        emerald: {
+                            50: '#ecfdf5',
+                            100: '#d1fae5',
+                            500: '#10b981',
+                            600: '#059669',
+                            700: '#047857',
+                            800: '#065f46',
+                            900: '#064e3b',
+                        },
+                        sage: {
+                            50: '#f4f7f4',
+                            100: '#e3ebe3',
+                            600: '#5c765d',
+                            700: '#485d49'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Custom scrollbar and animations */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .fade-in { animation: fadeIn 0.25s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans h-full flex flex-col overflow-hidden">
+
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+    <div id="action-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 fade-in border border-slate-100">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="modal-title" class="text-lg font-bold text-slate-900">Record Action</h3>
+                <button onclick="closeActionModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <form id="action-form" onsubmit="handleModalSubmit(event)">
+                <input type="hidden" id="modal-item-id">
+                <input type="hidden" id="modal-action-type">
+                
+                <div id="modal-qty-container" class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Quantity (<span id="modal-unit-label"></span>)</label>
+                    <input type="number" step="any" id="modal-qty" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                </div>
+
+                <div id="modal-reason-container" class="mb-4 hidden">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Reason for Disposal</label>
+                    <select id="modal-reason" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                        <option value="Spoilage / Mold">Spoilage / Mold</option>
+                        <option value="Forgotten Expiry">Forgotten Expiry</option>
+                        <option value="Over-purchasing">Over-purchasing</option>
+                        <option value="Excess Cooking">Excess Cooking</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Notes / Remarks</label>
+                    <textarea id="modal-notes" rows="2" placeholder="Optional notes..." class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"></textarea>
+                </div>
+
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeActionModal()" class="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 font-medium">Cancel</button>
+                    <button type="submit" id="modal-submit-btn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium shadow-sm transition-all">Confirm</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="flex h-full w-full overflow-hidden">
+        
+        <!-- Sidebar Navigation (Desktop) -->
+        <aside id="sidebar" class="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 z-30 transition-all duration-300">
+            <div class="p-5 border-b border-slate-100 flex items-center space-x-3">
+                <div class="h-10 w-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-emerald-600/20">
+                    <i class="fa-solid fa-leaf text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg text-slate-900 tracking-tight leading-none">FreshTrack</h1>
+                    <span class="text-xs font-medium text-emerald-600">Waste Reduction System</span>
+                </div>
+            </div>
+
+            <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+                <button onclick="switchTab('dashboard')" class="nav-btn w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 group active-nav" data-tab="dashboard">
+                    <i class="fa-solid fa-chart-pie w-5 text-center group-hover:text-emerald-600"></i>
+                    <span>Dashboard</span>
+                </button>
+                <button onclick="switchTab('inventory')" class="nav-btn w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 group" data-tab="inventory">
+                    <i class="fa-solid fa-box-archive w-5 text-center group-hover:text-emerald-600"></i>
+                    <span>Food Inventory</span>
+                    <span id="nav-inv-count" class="ml-auto bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full font-bold">0</span>
+                </button>
+                <button onclick="switchTab('add-food')" class="nav-btn w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 group" data-tab="add-food">
+                    <i class="fa-solid fa-plus-circle w-5 text-center group-hover:text-emerald-600"></i>
+                    <span>Add Food Item</span>
+                </button>
+                <button onclick="switchTab('reminders')" class="nav-btn w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 group" data-tab="reminders">
+                    <i class="fa-solid fa-bell w-5 text-center group-hover:text-emerald-600"></i>
+                    <span>Expiry Reminders</span>
+                    <span id="nav-reminder-badge" class="ml-auto bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-bold hidden">0</span>
+                </button>
+                <button onclick="switchTab('usage')" class="nav-btn w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 group" data-tab="usage">
+                    <i class="fa-solid fa-chart-line w-5 text-center group-hover:text-emerald-600"></i>
+                    <span>Usage & Waste</span>
+                </button>
+                <button onclick="switchTab('recipes')" class="nav-btn w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 group" data-tab="recipes">
+                    <i class="fa-solid fa-utensils w-5 text-center group-hover:text-emerald-600"></i>
+                    <span>Recipe Suggestions</span>
+                </button>
+                <button onclick="switchTab('analytics')" class="nav-btn w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 group" data-tab="analytics">
+                    <i class="fa-solid fa-chart-column w-5 text-center group-hover:text-emerald-600"></i>
+                    <span>Reports & Analytics</span>
+                </button>
+                <button onclick="switchTab('shopping')" class="nav-btn w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 group" data-tab="shopping">
+                    <i class="fa-solid fa-basket-shopping w-5 text-center group-hover:text-emerald-600"></i>
+                    <span>Shopping List</span>
+                </button>
+                <button onclick="switchTab('settings')" class="nav-btn w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 group" data-tab="settings">
+                    <i class="fa-solid fa-gear w-5 text-center group-hover:text-emerald-600"></i>
+                    <span>Settings & Demo</span>
+                </button>
+            </nav>
+
+            <div class="p-4 border-t border-slate-100 bg-slate-50/50">
+                <div class="flex items-center space-x-3">
+                    <div class="h-9 w-9 bg-emerald-100 text-emerald-800 rounded-full flex items-center justify-center font-bold text-sm" id="sidebar-user-avatar">JD</div>
+                    <div class="overflow-hidden">
+                        <p class="text-sm font-semibold text-slate-800 truncate" id="sidebar-user-name">John Doe</p>
+                        <p class="text-xs text-slate-500">Home Kitchen</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <div class="flex-1 flex flex-col h-full overflow-hidden">
+            
+            <!-- Top Header -->
+            <header class="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-4 md:px-8 z-20 shrink-0">
+                <div class="flex items-center space-x-3">
+                    <button onclick="toggleMobileMenu()" class="md:hidden text-slate-600 hover:text-slate-900 focus:outline-none p-2">
+                        <i class="fa-solid fa-bars text-xl"></i>
+                    </button>
+                    <div class="flex items-center space-x-2 md:hidden">
+                        <div class="h-8 w-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white text-sm">
+                            <i class="fa-solid fa-leaf"></i>
+                        </div>
+                        <span class="font-bold text-slate-900">FreshTrack</span>
+                    </div>
+                    <div class="hidden sm:flex items-center bg-slate-100 rounded-xl px-3 py-1.5 w-64 md:w-80 border border-slate-200/60 focus-within:border-emerald-500 focus-within:bg-white transition-all">
+                        <i class="fa-solid fa-search text-slate-400 mr-2 text-sm"></i>
+                        <input type="text" id="global-search" oninput="handleGlobalSearch(event)" placeholder="Search food items or recipes..." class="bg-transparent text-sm w-full outline-none text-slate-700 placeholder-slate-400">
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-4">
+                    <button onclick="switchTab('reminders')" class="relative p-2 text-slate-600 hover:text-emerald-600 rounded-full hover:bg-slate-100 transition-colors">
+                        <i class="fa-regular fa-bell text-xl"></i>
+                        <span id="top-notification-badge" class="absolute top-1 right-1 h-4 w-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center hidden">0</span>
+                    </button>
+                    
+                    <button onclick="loadDemoData()" title="Load Sample Demo Data" class="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-semibold transition-all">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        <span>Load Demo</span>
+                    </button>
+
+                    <div class="h-8 w-px bg-slate-200 hidden sm:block"></div>
+
+                    <div class="flex items-center space-x-3">
+                        <div class="text-right hidden md:block">
+                            <p class="text-xs font-semibold text-slate-900" id="header-user-name">John Doe</p>
+                            <p class="text-[10px] text-emerald-600 font-medium">Active Household</p>
+                        </div>
+                        <div class="h-9 w-9 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold text-sm shadow-sm" id="header-user-avatar">JD</div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Mobile Navigation Drawer -->
+            <div id="mobile-drawer" class="fixed inset-0 bg-slate-900/50 z-50 hidden md:hidden flex">
+                <div class="bg-white w-72 h-full flex flex-col shadow-2xl">
+                    <div class="p-5 border-b border-slate-100 flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="h-9 w-9 bg-emerald-600 rounded-xl flex items-center justify-center text-white">
+                                <i class="fa-solid fa-leaf"></i>
+                            </div>
+                            <span class="font-bold text-lg text-slate-900">FreshTrack</span>
+                        </div>
+                        <button onclick="toggleMobileMenu()" class="text-slate-400 hover:text-slate-600 p-2"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    </div>
+                    <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+                        <button onclick="switchTab('dashboard'); toggleMobileMenu();" class="nav-btn-mob w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm text-slate-600 hover:bg-emerald-50 hover:text-emerald-700" data-tab="dashboard"><i class="fa-solid fa-chart-pie w-5"></i><span>Dashboard</span></button>
+                        <button onclick="switchTab('inventory'); toggleMobileMenu();" class="nav-btn-mob w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm text-slate-600 hover:bg-emerald-50 hover:text-emerald-700" data-tab="inventory"><i class="fa-solid fa-box-archive w-5"></i><span>Food Inventory</span></button>
+                        <button onclick="switchTab('add-food'); toggleMobileMenu();" class="nav-btn-mob w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm text-slate-600 hover:bg-emerald-50 hover:text-emerald-700" data-tab="add-food"><i class="fa-solid fa-plus-circle w-5"></i><span>Add Food Item</span></button>
+                        <button onclick="switchTab('reminders'); toggleMobileMenu();" class="nav-btn-mob w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm text-slate-600 hover:bg-emerald-50 hover:text-emerald-700" data-tab="reminders"><i class="fa-solid fa-bell w-5"></i><span>Expiry Reminders</span></button>
+                        <button onclick="switchTab('usage'); toggleMobileMenu();" class="nav-btn-mob w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm text-slate-600 hover:bg-emerald-50 hover:text-emerald-700" data-tab="usage"><i class="fa-solid fa-chart-line w-5"></i><span>Usage & Waste</span></button>
+                        <button onclick="switchTab('recipes'); toggleMobileMenu();" class="nav-btn-mob w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm text-slate-600 hover:bg-emerald-50 hover:text-emerald-700" data-tab="recipes"><i class="fa-solid fa-utensils w-5"></i><span>Recipe Suggestions</span></button>
+                        <button onclick="switchTab('analytics'); toggleMobileMenu();" class="nav-btn-mob w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm text-slate-600 hover:bg-emerald-50 hover:text-emerald-700" data-tab="analytics"><i class="fa-solid fa-chart-column w-5"></i><span>Reports & Analytics</span></button>
+                        <button onclick="switchTab('shopping'); toggleMobileMenu();" class="nav-btn-mob w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm text-slate-600 hover:bg-emerald-50 hover:text-emerald-700" data-tab="shopping"><i class="fa-solid fa-basket-shopping w-5"></i><span>Shopping List</span></button>
+                        <button onclick="switchTab('settings'); toggleMobileMenu();" class="nav-btn-mob w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl font-medium text-sm text-slate-600 hover:bg-emerald-50 hover:text-emerald-700" data-tab="settings"><i class="fa-solid fa-gear w-5"></i><span>Settings & Demo</span></button>
+                    </nav>
+                </div>
+            </div>
+
+            <!-- Scrollable Tab Content Viewport -->
+            <main class="flex-1 overflow-y-auto p-4 md:p-8 bg-slate-50/70" id="main-viewport">
+                
+                <div id="tab-dashboard" class="tab-content space-y-6 fade-in">
+                    <!-- Welcome & Quick Action Header -->
+                    <div class="bg-gradient-to-r from-emerald-800 to-emerald-600 rounded-3xl p-6 md:p-8 text-white shadow-xl shadow-emerald-900/10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                        <div>
+                            <span class="inline-block bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider mb-3">Sustainability Hub</span>
+                            <h2 class="text-2xl md:text-3xl font-bold tracking-tight">Welcome to FreshTrack 🌱</h2>
+                            <p class="text-emerald-100 text-sm mt-1 max-w-xl">Track expiry dates, reduce food wastage at home, and save money while protecting the environment.</p>
+                        </div>
+                        <div class="flex flex-wrap gap-3">
+                            <button onclick="switchTab('add-food')" class="bg-white text-emerald-800 hover:bg-emerald-50 px-4 py-2.5 rounded-xl font-semibold text-sm shadow transition-all flex items-center space-x-2">
+                                <i class="fa-solid fa-plus"></i><span>Add Food Item</span>
+                            </button>
+                            <button onclick="switchTab('inventory')" class="bg-emerald-700/80 hover:bg-emerald-700 text-white border border-emerald-500/40 px-4 py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center space-x-2">
+                                <i class="fa-solid fa-box-archive"></i><span>View Inventory</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Statistics Grid -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center space-x-4">
+                            <div class="h-12 w-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center text-xl font-bold">
+                                <i class="fa-solid fa-boxes-stacked"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Items</p>
+                                <h3 id="stat-total-items" class="text-2xl font-bold text-slate-900 mt-0.5">0</h3>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center space-x-4">
+                            <div class="h-12 w-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center text-xl font-bold">
+                                <i class="fa-solid fa-clock-rotate-left"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Expiring Soon</p>
+                                <h3 id="stat-expiring-soon" class="text-2xl font-bold text-amber-600 mt-0.5">0</h3>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center space-x-4">
+                            <div class="h-12 w-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center text-xl font-bold">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Expired Items</p>
+                                <h3 id="stat-expired" class="text-2xl font-bold text-rose-600 mt-0.5">0</h3>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center space-x-4">
+                            <div class="h-12 w-12 bg-emerald-50 text-emerald-700 rounded-2xl flex items-center justify-center text-xl font-bold">
+                                <i class="fa-solid fa-seedling"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Food Saved</p>
+                                <h3 id="stat-food-saved" class="text-2xl font-bold text-emerald-700 mt-0.5">0 kg</h3>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center space-x-4 sm:col-span-2 lg:col-span-1">
+                            <div class="h-12 w-12 bg-emerald-50 text-emerald-800 rounded-2xl flex items-center justify-center text-xl font-bold">
+                                <i class="fa-solid fa-wallet"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Money Saved</p>
+                                <h3 id="stat-money-saved" class="text-2xl font-bold text-emerald-800 mt-0.5">₹0</h3>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Row -->
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm lg:col-span-1 flex flex-col">
+                            <h3 class="font-bold text-slate-900 mb-1">Expiry Status Overview</h3>
+                            <p class="text-xs text-slate-500 mb-4">Breakdown of current inventory freshness</p>
+                            <div class="flex-1 flex items-center justify-center relative min-h-[220px]">
+                                <canvas id="dashboardExpiryChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm lg:col-span-2 flex flex-col">
+                            <h3 class="font-bold text-slate-900 mb-1">Monthly Food Waste Reduction</h3>
+                            <p class="text-xs text-slate-500 mb-4">Weight of food consumed vs saved over recent months</p>
+                            <div class="flex-1 relative min-h-[220px]">
+                                <canvas id="dashboardWasteChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Expiring Soon & Recent Activity -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- Expiring Soon List -->
+                        <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+                            <div class="flex justify-between items-center mb-4">
+                                <div>
+                                    <h3 class="font-bold text-slate-900">Urgent & Expiring Soon</h3>
+                                    <p class="text-xs text-slate-500">Items that require immediate attention</p>
+                                </div>
+                                <button onclick="switchTab('reminders')" class="text-xs font-semibold text-emerald-600 hover:text-emerald-700">View All</button>
+                            </div>
+                            <div id="dashboard-expiring-list" class="space-y-3">
+                                <!-- Populated dynamically -->
+                            </div>
+                        </div>
+
+                        <!-- Recent Activity List -->
+                        <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+                            <div class="flex justify-between items-center mb-4">
+                                <div>
+                                    <h3 class="font-bold text-slate-900">Recent Activity Log</h3>
+                                    <p class="text-xs text-slate-500">Latest additions, consumptions, and disposals</p>
+                                </div>
+                                <button onclick="switchTab('usage')" class="text-xs font-semibold text-emerald-600 hover:text-emerald-700">History</button>
+                            </div>
+                            <div id="dashboard-activity-list" class="space-y-3">
+                                <!-- Populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-inventory" class="tab-content space-y-6 hidden fade-in">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-900">Food Inventory Management</h2>
+                            <p class="text-xs text-slate-500 mt-0.5">Search, filter, update, and manage your household or restaurant pantry items.</p>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <button onclick="switchTab('add-food')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm transition-all flex items-center space-x-2">
+                                <i class="fa-solid fa-plus"></i><span>Add Food Item</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filters & Search Bar -->
+                    <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1">Search Food</label>
+                            <div class="flex items-center bg-slate-50 rounded-xl px-3 py-2 border border-slate-200 focus-within:border-emerald-500">
+                                <i class="fa-solid fa-search text-slate-400 mr-2 text-xs"></i>
+                                <input type="text" id="inv-search" oninput="renderInventoryTable()" placeholder="Search by name..." class="bg-transparent text-xs w-full outline-none text-slate-700">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1">Filter by Category</label>
+                            <select id="inv-filter-cat" onchange="renderInventoryTable()" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:border-emerald-500">
+                                <option value="All">All Categories</option>
+                                <option value="Fruits">Fruits</option>
+                                <option value="Vegetables">Vegetables</option>
+                                <option value="Dairy">Dairy</option>
+                                <option value="Grains">Grains</option>
+                                <option value="Meat">Meat</option>
+                                <option value="Bakery">Bakery</option>
+                                <option value="Beverages">Beverages</option>
+                                <option value="Packaged Food">Packaged Food</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1">Filter by Expiry Status</label>
+                            <select id="inv-filter-status" onchange="renderInventoryTable()" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:border-emerald-500">
+                                <option value="All">All Statuses</option>
+                                <option value="Fresh">Fresh (>7 days)</option>
+                                <option value="Expiring Soon">Expiring Soon (4-7 days)</option>
+                                <option value="Urgent">Urgent (1-3 days)</option>
+                                <option value="Expires Today">Expires Today</option>
+                                <option value="Expired">Expired</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1">Sort By</label>
+                            <select id="inv-sort" onchange="renderInventoryTable()" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:border-emerald-500">
+                                <option value="expiry-asc">Expiry Date (Soonest first)</option>
+                                <option value="expiry-desc">Expiry Date (Latest first)</option>
+                                <option value="name-asc">Food Name (A-Z)</option>
+                                <option value="price-desc">Estimated Price (High to Low)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Inventory Table / Card Grid View -->
+                    <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase tracking-wider font-semibold">
+                                        <th class="py-3.5 px-4">Food Item</th>
+                                        <th class="py-3.5 px-4">Category</th>
+                                        <th class="py-3.5 px-4">Quantity</th>
+                                        <th class="py-3.5 px-4">Expiry Date</th>
+                                        <th class="py-3.5 px-4">Days Left</th>
+                                        <th class="py-3.5 px-4">Location</th>
+                                        <th class="py-3.5 px-4">Status</th>
+                                        <th class="py-3.5 px-4 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="inventory-table-body" class="divide-y divide-slate-100 text-sm text-slate-700">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="inventory-empty-state" class="hidden p-12 text-center">
+                            <div class="h-16 w-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center text-2xl mx-auto mb-3">
+                                <i class="fa-solid fa-basket-shopping"></i>
+                            </div>
+                            <h4 class="font-bold text-slate-900 text-lg">No food items found</h4>
+                            <p class="text-slate-500 text-sm mt-1 max-w-sm mx-auto">Get started by adding items manually or loading the sample demo data.</p>
+                            <div class="mt-4 flex justify-center space-x-3">
+                                <button onclick="switchTab('add-food')" class="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm">Add Item</button>
+                                <button onclick="loadDemoData()" class="bg-slate-100 text-slate-700 hover:bg-slate-200 px-4 py-2 rounded-xl text-sm font-semibold">Load Demo Data</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-add-food" class="tab-content space-y-6 hidden fade-in max-w-3xl mx-auto">
+                    <div class="bg-white p-6 md:p-8 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <div class="mb-6 pb-4 border-b border-slate-100 flex justify-between items-center">
+                            <div>
+                                <h2 id="form-mode-title" class="text-xl font-bold text-slate-900">Add New Food Item</h2>
+                                <p class="text-xs text-slate-500 mt-0.5">Enter food details to track freshness and expiry alerts.</p>
+                            </div>
+                            <button id="cancel-edit-btn" onclick="resetFoodForm()" class="hidden text-xs text-rose-600 font-semibold hover:underline">Cancel Edit</button>
+                        </div>
+
+                        <form id="food-form" onsubmit="handleFoodFormSubmit(event)" class="space-y-4">
+                            <input type="hidden" id="edit-item-id">
+                            
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">Food Name *</label>
+                                    <input type="text" id="f-name" required placeholder="e.g. Fresh Organic Milk" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm outline-none focus:border-emerald-500 focus:bg-white">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">Category *</label>
+                                    <select id="f-category" required class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm outline-none focus:border-emerald-500 focus:bg-white">
+                                        <option value="Fruits">Fruits</option>
+                                        <option value="Vegetables">Vegetables</option>
+                                        <option value="Dairy" selected>Dairy</option>
+                                        <option value="Grains">Grains</option>
+                                        <option value="Meat">Meat</option>
+                                        <option value="Bakery">Bakery</option>
+                                        <option value="Beverages">Beverages</option>
+                                        <option value="Packaged Food">Packaged Food</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">Quantity *</label>
+                                    <input type="number" step="any" id="f-quantity" required min="0.01" placeholder="e.g. 1" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm outline-none focus:border-emerald-500 focus:bg-white">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">Unit *</label>
+                                    <select id="f-unit" required class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm outline-none focus:border-emerald-500 focus:bg-white">
+                                        <option value="pieces">pieces</option>
+                                        <option value="kg">kg</option>
+                                        <option value="g">g</option>
+                                        <option value="litres" selected>litres</option>
+                                        <option value="ml">ml</option>
+                                        <option value="packets">packets</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">Purchase Date *</label>
+                                    <input type="date" id="f-purchase-date" required class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm outline-none focus:border-emerald-500 focus:bg-white">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">Expiry Date *</label>
+                                    <input type="date" id="f-expiry-date" required class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm outline-none focus:border-emerald-500 focus:bg-white">
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">Storage Location *</label>
+                                    <select id="f-location" required class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm outline-none focus:border-emerald-500 focus:bg-white">
+                                        <option value="Refrigerator" selected>Refrigerator</option>
+                                        <option value="Freezer">Freezer</option>
+                                        <option value="Pantry">Pantry</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">Estimated Price (<span id="currency-symbol-label">₹</span>) *</label>
+                                    <input type="number" step="any" id="f-price" required min="0" placeholder="e.g. 60" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm outline-none focus:border-emerald-500 focus:bg-white">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Optional Notes</label>
+                                <textarea id="f-notes" rows="2" placeholder="e.g. Bought from local farmers market..." class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm outline-none focus:border-emerald-500 focus:bg-white"></textarea>
+                            </div>
+
+                            <div class="flex justify-end space-x-3 pt-4 border-t border-slate-100">
+                                <button type="button" onclick="switchTab('inventory')" class="px-5 py-2.5 border border-slate-300 rounded-xl text-slate-700 hover:bg-slate-50 text-sm font-semibold">Cancel</button>
+                                <button type="submit" id="form-submit-btn" class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold shadow-md transition-all">Save Food Item</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div id="tab-reminders" class="tab-content space-y-6 hidden fade-in">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-900">Expiry Date Reminders & Alerts</h2>
+                            <p class="text-xs text-slate-500 mt-0.5">Prioritized list of items needing immediate consumption or preservation.</p>
+                        </div>
+                        <div class="flex items-center space-x-2 bg-amber-50 text-amber-800 px-3 py-1.5 rounded-xl border border-amber-200 text-xs font-semibold">
+                            <i class="fa-solid fa-bell"></i>
+                            <span id="reminder-alert-count">0 Items Urgent</span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="lg:col-span-2 space-y-4">
+                            <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+                                <h3 class="font-bold text-slate-900 mb-4 flex items-center space-x-2">
+                                    <i class="fa-solid fa-triangle-exclamation text-rose-500"></i>
+                                    <span>Critical & Expiring Soon Alerts</span>
+                                </h3>
+                                <div id="reminders-list" class="space-y-3">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="space-y-6">
+                            <!-- Food Safety Guidance Box -->
+                            <div class="bg-gradient-to-br from-emerald-50 to-emerald-100/50 p-6 rounded-2xl border border-emerald-200 shadow-sm">
+                                <h4 class="font-bold text-emerald-900 text-base mb-2 flex items-center space-x-2">
+                                    <i class="fa-solid fa-shield-heart text-emerald-600"></i>
+                                    <span>Food Safety Guidance</span>
+                                </h4>
+                                <ul class="text-xs text-emerald-800 space-y-2.5 leading-relaxed">
+                                    <li><i class="fa-solid fa-check text-emerald-600 mr-1.5"></i> <strong>"Best Before" vs "Use By":</strong> Best before relates to quality, while Use By relates to safety.</li>
+                                    <li><i class="fa-solid fa-check text-emerald-600 mr-1.5"></i> <strong>Sniff & Inspect:</strong> Always check visual mold and strange odors before discarding safe items.</li>
+                                    <li><i class="fa-solid fa-check text-emerald-600 mr-1.5"></i> <strong>Freezing:</strong> Freeze meats, bread, and ripe fruits before expiry to extend shelf-life by months.</li>
+                                </ul>
+                            </div>
+
+                            <!-- Notification Preferences -->
+                            <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+                                <h4 class="font-bold text-slate-900 text-sm mb-3">Reminder Preferences</h4>
+                                <div class="space-y-3 text-xs">
+                                    <label class="flex items-center justify-between cursor-pointer">
+                                        <span class="text-slate-700 font-medium">In-App Notification Badges</span>
+                                        <input type="checkbox" checked id="pref-badge" onchange="saveReminderPreferences()" class="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4">
+                                    </label>
+                                    <label class="flex items-center justify-between cursor-pointer">
+                                        <span class="text-slate-700 font-medium">Alert on 3 Days Remaining</span>
+                                        <input type="checkbox" checked id="pref-3day" onchange="saveReminderPreferences()" class="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4">
+                                    </label>
+                                    <label class="flex items-center justify-between cursor-pointer">
+                                        <span class="text-slate-700 font-medium">Alert on Expiry Day</span>
+                                        <input type="checkbox" checked id="pref-today" onchange="saveReminderPreferences()" class="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4">
+                                    </label>
+                                </div>
+                                <p class="text-[10px] text-slate-400 mt-3 italic">* Simulated in-app reminders. App must be open in browser for active badge updates.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-usage" class="tab-content space-y-6 hidden fade-in">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-900">Food Usage & Waste Tracking</h2>
+                            <p class="text-xs text-slate-500 mt-0.5">Monitor consumed food, saved quantities, and analyze reasons for food disposal.</p>
+                        </div>
+                    </div>
+
+                    <!-- Usage Summary Cards -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center space-x-4">
+                            <div class="h-12 w-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center text-xl font-bold">
+                                <i class="fa-solid fa-utensils"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-slate-500 uppercase">Total Consumed</p>
+                                <h3 id="usage-total-consumed" class="text-2xl font-bold text-slate-900 mt-0.5">0 items</h3>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center space-x-4">
+                            <div class="h-12 w-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center text-xl font-bold">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-slate-500 uppercase">Total Discarded</p>
+                                <h3 id="usage-total-discarded" class="text-2xl font-bold text-rose-600 mt-0.5">0 items</h3>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center space-x-4">
+                            <div class="h-12 w-12 bg-emerald-50 text-emerald-800 rounded-2xl flex items-center justify-center text-xl font-bold">
+                                <i class="fa-solid fa-money-bill-wave"></i>
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-slate-500 uppercase">Financial Loss</p>
+                                <h3 id="usage-financial-loss" class="text-2xl font-bold text-rose-700 mt-0.5">₹0</h3>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- History Log Table -->
+                    <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                        <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+                            <h3 class="font-bold text-slate-900">Consumption & Waste History Log</h3>
+                            <button onclick="clearActivityLogs()" class="text-xs text-rose-600 hover:underline font-semibold">Clear History</button>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase tracking-wider font-semibold">
+                                        <th class="py-3 px-4">Date</th>
+                                        <th class="py-3 px-4">Food Item</th>
+                                        <th class="py-3 px-4">Action</th>
+                                        <th class="py-3 px-4">Quantity</th>
+                                        <th class="py-3 px-4">Reason / Notes</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="activity-log-table-body" class="divide-y divide-slate-100 text-sm text-slate-700">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="activity-empty-state" class="hidden p-10 text-center text-slate-400 text-sm">
+                            No consumption or disposal logs recorded yet.
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-recipes" class="tab-content space-y-6 hidden fade-in">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-900">Smart Recipe Suggestions</h2>
+                            <p class="text-xs text-slate-500 mt-0.5">Recipes tailored to use your available inventory with priority for expiring items.</p>
+                        </div>
+                        <button onclick="renderRecipeSuggestions()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-sm transition-all flex items-center space-x-2">
+                            <i class="fa-solid fa-rotate"></i><span>Refresh Matches</span>
+                        </button>
+                    </div>
+
+                    <!-- Recipe Cards Grid -->
+                    <div id="recipes-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <div id="tab-analytics" class="tab-content space-y-6 hidden fade-in">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <h2 class="text-xl font-bold text-slate-900">Reports & Analytics Dashboard</h2>
+                        <p class="text-xs text-slate-500 mt-0.5">Comprehensive visual analytics powered by Chart.js.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+                            <h3 class="font-bold text-slate-900 mb-4">Food Items by Category</h3>
+                            <div class="relative min-h-[260px] flex items-center justify-center">
+                                <canvas id="analyticsCategoryChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+                            <h3 class="font-bold text-slate-900 mb-4">Most Frequently Discarded Categories</h3>
+                            <div class="relative min-h-[260px] flex items-center justify-center">
+                                <canvas id="analyticsWasteReasonChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-shopping" class="tab-content space-y-6 hidden fade-in max-w-4xl mx-auto">
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-900">Smart Shopping List</h2>
+                            <p class="text-xs text-slate-500 mt-0.5">Plan grocery purchases and calculate estimated total cost.</p>
+                        </div>
+                        <div class="bg-emerald-50 text-emerald-800 px-4 py-2 rounded-xl text-sm font-bold border border-emerald-200">
+                            Estimated Total: <span id="shopping-total-cost">₹0</span>
+                        </div>
+                    </div>
+
+                    <!-- Add Shopping Item Form -->
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+                        <form onsubmit="handleShoppingFormSubmit(event)" class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                            <div class="sm:col-span-2">
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Item Name</label>
+                                <input type="text" id="shop-name" required placeholder="e.g. Tomatoes" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm outline-none focus:border-emerald-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Quantity / Unit</label>
+                                <input type="text" id="shop-qty" required placeholder="e.g. 1 kg" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm outline-none focus:border-emerald-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Estimated Price</label>
+                                <input type="number" step="any" id="shop-price" required min="0" placeholder="e.g. 40" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm outline-none focus:border-emerald-500">
+                            </div>
+                            <div class="sm:col-span-4 flex justify-end">
+                                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-xl text-sm font-semibold shadow-sm transition-all">Add to Shopping List</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Shopping List Table -->
+                    <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase tracking-wider font-semibold">
+                                        <th class="py-3 px-4 w-10">Status</th>
+                                        <th class="py-3 px-4">Item Name</th>
+                                        <th class="py-3 px-4">Quantity</th>
+                                        <th class="py-3 px-4">Estimated Price</th>
+                                        <th class="py-3 px-4 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="shopping-table-body" class="divide-y divide-slate-100 text-sm text-slate-700">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="shopping-empty-state" class="hidden p-10 text-center text-slate-400 text-sm">
+                            Your shopping list is empty. Add grocery items above!
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-settings" class="tab-content space-y-6 hidden fade-in max-w-3xl mx-auto">
+                    <div class="bg-white p-6 md:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-6">
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-900">Settings & Data Management</h2>
+                            <p class="text-xs text-slate-500 mt-0.5">Customize user preferences, currency, theme, and data backups.</p>
+                        </div>
+
+                        <!-- User Profile Settings -->
+                        <div class="space-y-4 pt-4 border-t border-slate-100">
+                            <h3 class="font-bold text-slate-900 text-sm">User & Household Profile</h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">Display Name</label>
+                                    <input type="text" id="setting-username" value="John Doe" onchange="updateUserSettings()" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm outline-none focus:border-emerald-500">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">Default Currency</label>
+                                    <select id="setting-currency" onchange="updateUserSettings()" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm outline-none focus:border-emerald-500">
+                                        <option value="₹" selected>INR (₹)</option>
+                                        <option value="$">USD ($)</option>
+                                        <option value="€">EUR (€)</option>
+                                        <option value="£">GBP (£)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Data Management / CSV Export Import -->
+                        <div class="space-y-4 pt-4 border-t border-slate-100">
+                            <h3 class="font-bold text-slate-900 text-sm">Data Export & Import (CSV)</h3>
+                            <div class="flex flex-wrap gap-4">
+                                <button onclick="exportInventoryCSV()" class="bg-slate-100 hover:bg-slate-200 text-slate-800 px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 transition-all">
+                                    <i class="fa-solid fa-file-arrow-down"></i><span>Export Inventory to CSV</span>
+                                </button>
+                                <label class="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 cursor-pointer transition-all">
+                                    <i class="fa-solid fa-file-arrow-up"></i><span>Import Inventory from CSV</span>
+                                    <input type="file" accept=".csv" onchange="importInventoryCSV(event)" class="hidden">
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Demo & Reset Data -->
+                        <div class="space-y-4 pt-4 border-t border-slate-100">
+                            <h3 class="font-bold text-slate-900 text-sm">Demo Data & Reset</h3>
+                            <div class="flex flex-wrap gap-4">
+                                <button onclick="loadDemoData()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 shadow-sm">
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i><span>Load Rich Sample Demo Data</span>
+                                </button>
+                                <button onclick="clearAllDataConfirm()" class="bg-rose-50 hover:bg-rose-100 text-rose-700 px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center space-x-2 border border-rose-200">
+                                    <i class="fa-solid fa-triangle-exclamation"></i><span>Clear All LocalStorage Data</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+
+    <script>
+        // --- State & Initialization ---
+        let inventory = JSON.parse(localStorage.getItem('freshtrack_inventory')) || [];
+        let activityLogs = JSON.parse(localStorage.getItem('freshtrack_logs')) || [];
+        let shoppingList = JSON.parse(localStorage.getItem('freshtrack_shopping')) || [];
+        let userSettings = JSON.parse(localStorage.getItem('freshtrack_settings')) || { name: 'John Doe', currency: '₹' };
+        
+        let dashboardExpiryChartInstance = null;
+        let dashboardWasteChartInstance = null;
+        let analyticsCategoryChartInstance = null;
+        let analyticsWasteReasonChartInstance = null;
+
+        // Sample demo dataset as requested
+        const demoDataset = [
+            { id: 'item_1', name: 'Organic Milk 1L', category: 'Dairy', quantity: 1, unit: 'litres', purchaseDate: getOffsetDate(-2), expiryDate: getOffsetDate(1), location: 'Refrigerator', price: 65, notes: 'Fresh pasteurized milk' },
+            { id: 'item_2', name: 'Whole Wheat Bread', category: 'Bakery', quantity: 1, unit: 'packets', purchaseDate: getOffsetDate(-3), expiryDate: getOffsetDate(2), location: 'Pantry', price: 45, notes: 'Soft sliced bread' },
+            { id: 'item_3', name: 'Ripe Tomatoes', category: 'Vegetables', quantity: 500, unit: 'g', purchaseDate: getOffsetDate(-4), expiryDate: getOffsetDate(4), location: 'Refrigerator', price: 30, notes: 'Salad tomatoes' },
+            { id: 'item_4', name: 'Basmati Rice 5kg', category: 'Grains', quantity: 5, unit: 'kg', purchaseDate: getOffsetDate(-30), expiryDate: getOffsetDate(365), location: 'Pantry', price: 350, notes: 'Premium aged rice' },
+            { id: 'item_5', name: 'Farm Fresh Eggs (Pack of 6)', category: 'Dairy', quantity: 6, unit: 'pieces', purchaseDate: getOffsetDate(-1), expiryDate: getOffsetDate(7), location: 'Refrigerator', price: 60, notes: 'Grade A brown eggs' },
+            { id: 'item_6', name: 'Fresh Apples', category: 'Fruits', quantity: 4, unit: 'pieces', purchaseDate: getOffsetDate(-5), expiryDate: getOffsetDate(10), location: 'Refrigerator', price: 120, notes: 'Crisp Fuji apples' },
+            { id: 'item_7', name: 'Greek Yogurt', category: 'Dairy', quantity: 2, unit: 'packets', purchaseDate: getOffsetDate(-6), expiryDate: getOffsetDate(0), location: 'Refrigerator', price: 90, notes: 'Expires today!' },
+            { id: 'item_8', name: 'Organic Potatoes', category: 'Vegetables', quantity: 2, unit: 'kg', purchaseDate: getOffsetDate(-10), expiryDate: getOffsetDate(-2), location: 'Pantry', price: 50, notes: 'Already expired test item' }
+        ];
+
+        window.addEventListener('DOMContentLoaded', () => {
+            // Set default date inputs for Add Food Form
+            document.getElementById('f-purchase-date').value = getOffsetDate(0);
+            document.getElementById('f-expiry-date').value = getOffsetDate(5);
+            
+            // Apply User Settings
+            document.getElementById('setting-username').value = userSettings.name;
+            document.getElementById('setting-currency').value = userSettings.currency;
+            updateHeaderProfile();
+
+            // If inventory is empty, load demo data automatically for smooth first experience
+            if (inventory.length === 0) {
+                inventory = demoDataset;
+                saveInventory();
+            }
+
+            refreshAllData();
+        });
+
+        // --- Helper Date Functions ---
+        function getOffsetDate(days) {
+            const d = new Date();
+            d.setDate(d.getDate() + days);
+            return d.toISOString().split('T')[0];
+        }
+
+        function calculateDaysRemaining(expiryDateStr) {
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            const exp = new Date(expiryDateStr);
+            exp.setHours(0,0,0,0);
+            const diffTime = exp - today;
+            return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+
+        function getExpiryStatus(daysLeft) {
+            if (daysLeft < 0) return 'Expired';
+            if (daysLeft === 0) return 'Expires Today';
+            if (daysLeft >= 1 && daysLeft <= 3) return 'Urgent';
+            if (daysLeft >= 4 && daysLeft <= 7) return 'Expiring Soon';
+            return 'Fresh';
+        }
+
+        function getStatusBadgeHtml(status) {
+            switch(status) {
+                case 'Fresh': return `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">Fresh</span>`;
+                case 'Expiring Soon': return `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">Expiring Soon</span>`;
+                case 'Urgent': return `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-800">Urgent</span>`;
+                case 'Expires Today': return `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800">Expires Today</span>`;
+                case 'Expired': return `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-200 text-slate-700">Expired</span>`;
+                default: return `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">${status}</span>`;
+            }
+        }
+
+        // --- Navigation Tabs ---
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            const target = document.getElementById(`tab-${tabId}`);
+            if (target) target.classList.remove('hidden');
+
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                if (btn.dataset.tab === tabId) {
+                    btn.classList.add('bg-emerald-50', 'text-emerald-700');
+                    btn.classList.remove('text-slate-600');
+                } else {
+                    btn.classList.remove('bg-emerald-50', 'text-emerald-700');
+                    btn.classList.add('text-slate-600');
+                }
+            });
+
+            // Refresh specific tab renders
+            if (tabId === 'dashboard') renderDashboard();
+            if (tabId === 'inventory') renderInventoryTable();
+            if (tabId === 'reminders') renderReminders();
+            if (tabId === 'usage') renderUsageAndWaste();
+            if (tabId === 'recipes') renderRecipeSuggestions();
+            if (tabId === 'analytics') renderAnalyticsCharts();
+            if (tabId === 'shopping') renderShoppingList();
+
+            // Scroll viewport to top
+            document.getElementById('main-viewport').scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function toggleMobileMenu() {
+            const drawer = document.getElementById('mobile-drawer');
+            drawer.classList.toggle('hidden');
+        }
+
+        // --- Toast Notifications ---
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const bgCol = type === 'success' ? 'bg-emerald-800' : type === 'error' ? 'bg-rose-800' : 'bg-slate-800';
+            toast.className = `${bgCol} text-white px-4 py-3 rounded-xl shadow-xl flex items-center space-x-3 text-sm font-medium fade-in pointer-events-auto`;
+            
+            const icon = type === 'success' ? 'fa-circle-check' : type === 'error' ? 'fa-triangle-exclamation' : 'fa-circle-info';
+            toast.innerHTML = `<i class="fa-solid ${icon} text-lg"></i><span>${message}</span>`;
+            
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // --- Core Data Persistence & Refresh ---
+        function saveInventory() {
+            localStorage.setItem('freshtrack_inventory', JSON.stringify(inventory));
+        }
+
+        function saveLogs() {
+            localStorage.setItem('freshtrack_logs', JSON.stringify(activityLogs));
+        }
+
+        function saveShopping() {
+            localStorage.setItem('freshtrack_shopping', JSON.stringify(shoppingList));
+        }
+
+        function refreshAllData() {
+            saveInventory();
+            updateBadgesAndCounters();
+            renderDashboard();
+        }
+
+        function updateBadgesAndCounters() {
+            const total = inventory.length;
+            document.getElementById('nav-inv-count').innerText = total;
+
+            let urgentCount = inventory.filter(item => {
+                const days = calculateDaysRemaining(item.expiryDate);
+                return days <= 3;
+            }).length;
+
+            const reminderBadge = document.getElementById('nav-reminder-badge');
+            const topBadge = document.getElementById('top-notification-badge');
+            
+            if (urgentCount > 0) {
+                reminderBadge.innerText = urgentCount;
+                reminderBadge.classList.remove('hidden');
+                topBadge.innerText = urgentCount;
+                topBadge.classList.remove('hidden');
+                document.getElementById('reminder-alert-count').innerText = `${urgentCount} Items Urgent`;
+            } else {
+                reminderBadge.classList.add('hidden');
+                topBadge.classList.add('hidden');
+                document.getElementById('reminder-alert-count').innerText = `0 Items Urgent`;
+            }
+        }
+
+        // --- Dashboard Renders ---
+        function renderDashboard() {
+            const totalItems = inventory.length;
+            const expiringSoon = inventory.filter(item => {
+                const d = calculateDaysRemaining(item.expiryDate);
+                return d >= 4 && d <= 7;
+            }).length;
+            const expired = inventory.filter(item => calculateDaysRemaining(item.expiryDate) < 0).length;
+
+            // Food saved & money saved calculation from usage logs
+            let savedKg = 0;
+            let moneySaved = 0;
+            activityLogs.forEach(log => {
+                if (log.action === 'Consumed') {
+                    savedKg += Number(log.quantityEstimate || 0);
+                    moneySaved += Number(log.priceEstimate || 0);
+                }
+            });
+
+            document.getElementById('stat-total-items').innerText = totalItems;
+            document.getElementById('stat-expiring-soon').innerText = expiringSoon;
+            document.getElementById('stat-expired').innerText = expired;
+            document.getElementById('stat-food-saved').innerText = `${savedKg.toFixed(1)} kg`;
+            document.getElementById('stat-money-saved').innerText = `${userSettings.currency}${moneySaved.toFixed(0)}`;
+
+            // Render Expiring Soon list on dashboard
+            const urgentListEl = document.getElementById('dashboard-expiring-list');
+            const urgentItems = inventory.filter(item => calculateDaysRemaining(item.expiryDate) <= 3).sort((a,b) => calculateDaysRemaining(a.expiryDate) - calculateDaysRemaining(b.expiryDate));
+
+            if (urgentItems.length === 0) {
+                urgentListEl.innerHTML = `<p class="text-xs text-slate-400 py-3 text-center">No urgent expiry items right now. Great job!</p>`;
+            } else {
+                urgentListEl.innerHTML = urgentItems.slice(0, 4).map(item => {
+                    const days = calculateDaysRemaining(item.expiryDate);
+                    const status = getExpiryStatus(days);
+                    return `
+                        <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                            <div>
+                                <h4 class="font-semibold text-sm text-slate-800">${item.name}</h4>
+                                <p class="text-xs text-slate-500">Expires: ${item.expiryDate} (${days < 0 ? 'Expired' : days + ' days left'})</p>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                ${getStatusBadgeHtml(status)}
+                                <button onclick="openActionModal('${item.id}', 'consume')" title="Consume" class="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 text-xs"><i class="fa-solid fa-check"></i></button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            // Render Recent Activity List
+            const actListEl = document.getElementById('dashboard-activity-list');
+            if (activityLogs.length === 0) {
+                actListEl.innerHTML = `<p class="text-xs text-slate-400 py-3 text-center">No recent activity logged.</p>`;
+            } else {
+                actListEl.innerHTML = activityLogs.slice(0, 4).map(log => `
+                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+                        <div>
+                            <span class="font-bold text-slate-800">${log.itemTitle}</span>
+                            <span class="text-slate-500 block">Action: <strong class="${log.action === 'Consumed' ? 'text-emerald-600' : 'text-rose-600'}">${log.action}</strong> (${log.date})</span>
+                        </div>
+                        <span class="text-slate-500 font-medium">${log.reason || log.quantity + ' ' + log.unit}</span>
+                    </div>
+                `).join('');
+            }
+
+            // Render Dashboard Charts
+            renderDashboardCharts(expiringSoon, expired, totalItems);
+        }
+
+        function renderDashboardCharts(expiringSoon, expired, totalItems) {
+            const freshCount = inventory.filter(i => calculateDaysRemaining(i.expiryDate) > 7).length;
+            const soonCount = expiringSoon;
+            const urgentCount = inventory.filter(i => {
+                const d = calculateDaysRemaining(i.expiryDate);
+                return d >= 0 && d <= 3;
+            }).length;
+            const expiredCount = expired;
+
+            // Expiry Status Doughnut Chart
+            const ctxExpiry = document.getElementById('dashboardExpiryChart').getContext('2d');
+            if (dashboardExpiryChartInstance) dashboardExpiryChartInstance.destroy();
+            dashboardExpiryChartInstance = new Chart(ctxExpiry, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Fresh', 'Expiring Soon', 'Urgent', 'Expired'],
+                    datasets: [{
+                        data: [freshCount, soonCount, urgentCount, expiredCount],
+                        backgroundColor: ['#10b981', '#f59e0b', '#f97316', '#64748b'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
+                }
+            });
+
+            // Monthly Waste Reduction Bar Chart
+            const ctxWaste = document.getElementById('dashboardWasteChart').getContext('2d');
+            if (dashboardWasteChartInstance) dashboardWasteChartInstance.destroy();
+            dashboardWasteChartInstance = new Chart(ctxWaste, {
+                type: 'bar',
+                data: {
+                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                    datasets: [
+                        { label: 'Food Saved (kg)', data: [12, 19, 15, 22, 28, 34], backgroundColor: '#10b981', borderRadius: 6 },
+                        { label: 'Food Wasted (kg)', data: [8, 5, 6, 4, 3, 2], backgroundColor: '#f43f5e', borderRadius: 6 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+                    scales: { y: { beginAtZero: true, grid: { borderDash: [4, 4] } }, x: { grid: { display: false } } }
+                }
+            });
+        }
+
+        // --- Inventory Table & Filters ---
+        function renderInventoryTable() {
+            const search = document.getElementById('inv-search').value.toLowerCase();
+            const catFilter = document.getElementById('inv-filter-cat').value;
+            const statusFilter = document.getElementById('inv-filter-status').value;
+            const sortBy = document.getElementById('inv-sort').value;
+
+            let filtered = inventory.filter(item => {
+                const days = calculateDaysRemaining(item.expiryDate);
+                const status = getExpiryStatus(days);
+                
+                const matchesSearch = item.name.toLowerCase().includes(search) || item.category.toLowerCase().includes(search);
+                const matchesCat = catFilter === 'All' || item.category === catFilter;
+                const matchesStatus = statusFilter === 'All' || status === statusFilter;
+
+                return matchesSearch && matchesCat && matchesStatus;
+            });
+
+            // Sorting
+            filtered.sort((a, b) => {
+                if (sortBy === 'expiry-asc') return new Date(a.expiryDate) - new Date(b.expiryDate);
+                if (sortBy === 'expiry-desc') return new Date(b.expiryDate) - new Date(a.expiryDate);
+                if (sortBy === 'name-asc') return a.name.localeCompare(b.name);
+                if (sortBy === 'price-desc') return b.price - a.price;
+            });
+
+            const tbody = document.getElementById('inventory-table-body');
+            const emptyState = document.getElementById('inventory-empty-state');
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            tbody.innerHTML = filtered.map(item => {
+                const days = calculateDaysRemaining(item.expiryDate);
+                const status = getExpiryStatus(days);
+                return `
+                    <tr class="hover:bg-slate-50/80 transition-colors border-b border-slate-100">
+                        <td class="py-3.5 px-4 font-semibold text-slate-900">${item.name}</td>
+                        <td class="py-3.5 px-4"><span class="px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium">${item.category}</span></td>
+                        <td class="py-3.5 px-4 font-medium">${item.quantity} ${item.unit}</td>
+                        <td class="py-3.5 px-4 text-slate-600">${item.expiryDate}</td>
+                        <td class="py-3.5 px-4 font-semibold ${days < 0 ? 'text-rose-600' : days <= 3 ? 'text-orange-600' : 'text-slate-700'}">
+                            ${days < 0 ? 'Expired ' + Math.abs(days) + 'd ago' : days === 0 ? 'Expires Today' : days + ' days'}
+                        </td>
+                        <td class="py-3.5 px-4 text-slate-600">${item.location}</td>
+                        <td class="py-3.5 px-4">${getStatusBadgeHtml(status)}</td>
+                        <td class="py-3.5 px-4 text-right space-x-1">
+                            <button onclick="openActionModal('${item.id}', 'consume')" title="Mark Consumed" class="p-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg"><i class="fa-solid fa-check"></i></button>
+                            <button onclick="openActionModal('${item.id}', 'discard')" title="Record Disposal" class="p-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg"><i class="fa-solid fa-trash-can"></i></button>
+                            <button onclick="editFoodItem('${item.id}')" title="Edit Item" class="p-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg"><i class="fa-solid fa-pen-to-square"></i></button>
+                            <button onclick="deleteFoodItem('${item.id}')" title="Delete Item" class="p-1.5 bg-slate-100 text-rose-600 hover:bg-rose-100 rounded-lg"><i class="fa-solid fa-trash"></i></button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // --- Add / Edit Food Form Handling ---
+        function handleFoodFormSubmit(event) {
+            event.preventDefault();
+            const editId = document.getElementById('edit-item-id').value;
+            
+            const itemData = {
+                id: editId || 'item_' + Date.now(),
+                name: document.getElementById('f-name').value.trim(),
+                category: document.getElementById('f-category').value,
+                quantity: Number(document.getElementById('f-quantity').value),
+                unit: document.getElementById('f-unit').value,
+                purchaseDate: document.getElementById('f-purchase-date').value,
+                expiryDate: document.getElementById('f-expiry-date').value,
+                location: document.getElementById('f-location').value,
+                price: Number(document.getElementById('f-price').value),
+                notes: document.getElementById('f-notes').value.trim()
+            };
+
+            if (editId) {
+                const index = inventory.findIndex(i => i.id === editId);
+                if (index !== -1) inventory[index] = itemData;
+                showToast(`Successfully updated "${itemData.name}"!`);
+            } else {
+                inventory.push(itemData);
+                // Add activity log
+                activityLogs.unshift({
+                    id: 'log_' + Date.now(),
+                    itemId: itemData.id,
+                    itemTitle: itemData.name,
+                    action: 'Added',
+                    quantity: itemData.quantity,
+                    unit: itemData.unit,
+                    date: new Date().toISOString().split('T')[0],
+                    reason: 'New Inventory Addition'
+                });
+                showToast(`Successfully added "${itemData.name}" to inventory!`);
+            }
+
+            refreshAllData();
+            resetFoodForm();
+            switchTab('inventory');
+        }
+
+        function editFoodItem(id) {
+            const item = inventory.find(i => i.id === id);
+            if (!item) return;
+
+            document.getElementById('edit-item-id').value = item.id;
+            document.getElementById('f-name').value = item.name;
+            document.getElementById('f-category').value = item.category;
+            document.getElementById('f-quantity').value = item.quantity;
+            document.getElementById('f-unit').value = item.unit;
+            document.getElementById('f-purchase-date').value = item.purchaseDate;
+            document.getElementById('f-expiry-date').value = item.expiryDate;
+            document.getElementById('f-location').value = item.location;
+            document.getElementById('f-price').value = item.price;
+            document.getElementById('f-notes').value = item.notes || '';
+
+            document.getElementById('form-mode-title').innerText = 'Edit Food Item';
+            document.getElementById('form-submit-btn').innerText = 'Update Item';
+            document.getElementById('cancel-edit-btn').classList.remove('hidden');
+
+            switchTab('add-food');
+        }
+
+        function resetFoodForm() {
+            document.getElementById('food-form').reset();
+            document.getElementById('edit-item-id').value = '';
+            document.getElementById('f-purchase-date').value = getOffsetDate(0);
+            document.getElementById('f-expiry-date').value = getOffsetDate(5);
+            document.getElementById('form-mode-title').innerText = 'Add New Food Item';
+            document.getElementById('form-submit-btn').innerText = 'Save Food Item';
+            document.getElementById('cancel-edit-btn').classList.add('hidden');
+        }
+
+        function deleteFoodItem(id) {
+            if (!confirm('Are you sure you want to delete this food item?')) return;
+            inventory = inventory.filter(i => i.id !== id);
+            refreshAllData();
+            renderInventoryTable();
+            showToast('Food item deleted successfully.', 'error');
+        }
+
+        // --- Consume / Discard Modal Actions ---
+        let currentActionItemId = null;
+        let currentActionType = null;
+
+        function openActionModal(id, actionType) {
+            const item = inventory.find(i => i.id === id);
+            if (!item) return;
+
+            currentActionItemId = id;
+            currentActionType = actionType;
+
+            document.getElementById('modal-item-id').value = id;
+            document.getElementById('modal-action-type').value = actionType;
+            document.getElementById('modal-qty').value = item.quantity;
+            document.getElementById('modal-unit-label').innerText = item.unit;
+            document.getElementById('modal-notes').value = '';
+
+            const titleEl = document.getElementById('modal-title');
+            const reasonContainer = document.getElementById('modal-reason-container');
+            const submitBtn = document.getElementById('modal-submit-btn');
+
+            if (actionType === 'consume') {
+                titleEl.innerText = `Mark Consumed: ${item.name}`;
+                reasonContainer.classList.add('hidden');
+                submitBtn.className = "px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium shadow-sm transition-all";
+                submitBtn.innerText = "Confirm Consumption";
+            } else {
+                titleEl.innerText = `Record Disposal: ${item.name}`;
+                reasonContainer.classList.remove('hidden');
+                submitBtn.className = "px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-medium shadow-sm transition-all";
+                submitBtn.innerText = "Confirm Disposal";
+            }
+
+            document.getElementById('action-modal').classList.remove('hidden');
+        }
+
+        function closeActionModal() {
+            document.getElementById('action-modal').classList.add('hidden');
+        }
+
+        function handleModalSubmit(event) {
+            event.preventDefault();
+            const id = document.getElementById('modal-item-id').value;
+            const actionType = document.getElementById('modal-action-type').value;
+            const qty = Number(document.getElementById('modal-qty').value);
+            const reason = document.getElementById('modal-reason').value;
+            const notes = document.getElementById('modal-notes').value.trim();
+
+            const itemIndex = inventory.findIndex(i => i.id === id);
+            if (itemIndex === -1) return;
+            const item = inventory[itemIndex];
+
+            // Estimate kg weight and financial value for logging
+            const qtyKgEstimate = item.unit === 'kg' ? qty : item.unit === 'g' ? qty / 1000 : qty * 0.2;
+            const priceEstimate = (qty / item.quantity) * item.price;
+
+            // Log activity
+            activityLogs.unshift({
+                id: 'log_' + Date.now(),
+                itemId: item.id,
+                itemTitle: item.name,
+                action: actionType === 'consume' ? 'Consumed' : 'Discarded',
+                quantity: qty,
+                unit: item.unit,
+                quantityEstimate: qtyKgEstimate,
+                priceEstimate: priceEstimate,
+                date: new Date().toISOString().split('T')[0],
+                reason: actionType === 'consume' ? 'Consumed by user' : reason,
+                notes: notes
+            });
+
+            // Remove or reduce inventory quantity
+            if (qty >= item.quantity) {
+                inventory.splice(itemIndex, 1);
+            } else {
+                inventory[itemIndex].quantity -= qty;
+            }
+
+            saveLogs();
+            refreshAllData();
+            closeActionModal();
+
+            if (actionType === 'consume') {
+                showToast(`Recorded consumption of "${item.name}"! Great job avoiding waste.`);
+            } else {
+                showToast(`Recorded disposal of "${item.name}". Reason: ${reason}.`, 'error');
+            }
+
+            // Refresh current visible tables
+            if (!document.getElementById('tab-inventory').classList.contains('hidden')) renderInventoryTable();
+            if (!document.getElementById('tab-usage').classList.contains('hidden')) renderUsageAndWaste();
+        }
+
+        // --- Reminders Tab Render ---
+        function renderReminders() {
+            const listEl = document.getElementById('reminders-list');
+            const urgentOrExpiring = inventory.filter(item => calculateDaysRemaining(item.expiryDate) <= 7).sort((a,b) => calculateDaysRemaining(a.expiryDate) - calculateDaysRemaining(b.expiryDate));
+
+            if (urgentOrExpiring.length === 0) {
+                listEl.innerHTML = `<div class="p-8 text-center text-slate-400"><i class="fa-solid fa-circle-check text-3xl text-emerald-500 mb-2"></i><p>No items expiring in the next 7 days. Your inventory is fresh!</p></div>`;
+                return;
+            }
+
+            listEl.innerHTML = urgentOrExpiring.map(item => {
+                const days = calculateDaysRemaining(item.expiryDate);
+                const status = getExpiryStatus(days);
+                return `
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-slate-50 rounded-2xl border border-slate-200/80 gap-3">
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <h4 class="font-bold text-slate-900">${item.name}</h4>
+                                ${getStatusBadgeHtml(status)}
+                            </div>
+                            <p class="text-xs text-slate-500 mt-1">Category: ${item.category} • Qty: ${item.quantity} ${item.unit} • Location: ${item.location}</p>
+                            <p class="text-xs font-semibold ${days < 0 ? 'text-rose-600' : 'text-amber-600'} mt-0.5">
+                                ${days < 0 ? 'Expired ' + Math.abs(days) + ' days ago' : days === 0 ? 'Expires Today!' : 'Expires in ' + days + ' days (' + item.expiryDate + ')'}
+                            </p>
+                        </div>
+                        <div class="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                            <button onclick="openActionModal('${item.id}', 'consume')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-sm">Consume</button>
+                            <button onclick="openActionModal('${item.id}', 'discard')" class="px-3 py-1.5 bg-rose-100 text-rose-700 hover:bg-rose-200 rounded-xl text-xs font-semibold">Discard</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function saveReminderPreferences() {
+            showToast('Reminder preferences saved.');
+        }
+
+        // --- Usage & Waste Tab Render ---
+        function renderUsageAndWaste() {
+            let totalConsumed = 0;
+            let totalDiscarded = 0;
+            let financialLoss = 0;
+
+            activityLogs.forEach(log => {
+                if (log.action === 'Consumed') totalConsumed++;
+                if (log.action === 'Discarded') {
+                    totalDiscarded++;
+                    financialLoss += Number(log.priceEstimate || 0);
+                }
+            });
+
+            document.getElementById('usage-total-consumed').innerText = `${totalConsumed} items`;
+            document.getElementById('usage-total-discarded').innerText = `${totalDiscarded} items`;
+            document.getElementById('usage-financial-loss').innerText = `${userSettings.currency}${financialLoss.toFixed(0)}`;
+
+            const tbody = document.getElementById('activity-log-table-body');
+            const emptyState = document.getElementById('activity-empty-state');
+
+            if (activityLogs.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            tbody.innerHTML = activityLogs.map(log => `
+                <tr class="hover:bg-slate-50 border-b border-slate-100">
+                    <td class="py-3 px-4 text-slate-600">${log.date}</td>
+                    <td class="py-3 px-4 font-semibold text-slate-900">${log.itemTitle}</td>
+                    <td class="py-3 px-4">
+                        <span class="px-2.5 py-1 rounded-full text-xs font-bold ${log.action === 'Consumed' ? 'bg-emerald-100 text-emerald-800' : log.action === 'Added' ? 'bg-blue-100 text-blue-800' : 'bg-rose-100 text-rose-800'}">
+                            ${log.action}
+                        </span>
+                    </td>
+                    <td class="py-3 px-4">${log.quantity} ${log.unit || ''}</td>
+                    <td class="py-3 px-4 text-slate-600">${log.reason || log.notes || '-'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function clearActivityLogs() {
+            if (!confirm('Clear all activity logs?')) return;
+            activityLogs = [];
+            saveLogs();
+            renderUsageAndWaste();
+            showToast('Activity history cleared.');
+        }
+
+        // --- Recipe Suggestions Tab Render (Prioritizing Expiring Items) ---
+        function renderRecipeSuggestions() {
+            const grid = document.getElementById('recipes-grid');
+            
+            // Extract available inventory food names
+            const availableNames = inventory.map(i => i.name.toLowerCase());
+            const expiringSoonNames = inventory.filter(i => calculateDaysRemaining(i.expiryDate) <= 4).map(i => i.name.toLowerCase());
+
+            // Sample local recipe dataset
+            const sampleRecipes = [
+                {
+                    title: 'Quick Vegetable Stir-Fry',
+                    time: '15 mins',
+                    ingredients: ['Tomatoes', 'Potatoes', 'Rice', 'Onions'],
+                    missing: ['Onions'],
+                    steps: 'Chop all vegetables finely. Sauté with oil in a wok until tender. Serve hot over freshly cooked Basmati rice.',
+                    usesExpiring: true
+                },
+                {
+                    title: 'Creamy Milk Omelette & Toast',
+                    time: '10 mins',
+                    ingredients: ['Eggs', 'Milk', 'Bread', 'Butter'],
+                    missing: ['Butter'],
+                    steps: 'Whisk eggs with a splash of milk. Pour into heated buttered pan. Toast the bread slices until golden brown.',
+                    usesExpiring: true
+                },
+                {
+                    title: 'Fresh Fruit Yogurt Bowl',
+                    time: '5 mins',
+                    ingredients: ['Yogurt', 'Apples', 'Honey'],
+                    missing: ['Honey'],
+                    steps: 'Scoop Greek yogurt into a bowl. Slice fresh apples and arrange on top. Drizzle with honey if desired.',
+                    usesExpiring: true
+                },
+                {
+                    title: 'Classic Tomato Rice Bowl',
+                    time: '25 mins',
+                    ingredients: ['Rice', 'Tomatoes', 'Garlic', 'Spices'],
+                    missing: ['Garlic'],
+                    steps: 'Cook rice separately. Prepare a rich tomato gravy with garlic and spices, then toss cooked rice thoroughly.',
+                    usesExpiring: false
+                },
+                {
+                    title: 'French Toast Delight',
+                    time: '12 mins',
+                    ingredients: ['Bread', 'Milk', 'Eggs', 'Sugar'],
+                    missing: ['Sugar'],
+                    steps: 'Whisk eggs, milk, and sugar. Dip bread slices into the mixture and pan-fry on medium heat until golden on both sides.',
+                    usesExpiring: true
+                }
+            ];
+
+            grid.innerHTML = sampleRecipes.map(recipe => {
+                return `
+                    <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 flex flex-col justify-between">
+                        <div>
+                            <div class="flex justify-between items-start mb-3">
+                                <h3 class="font-bold text-slate-900 text-lg">${recipe.title}</h3>
+                                <span class="bg-emerald-50 text-emerald-700 text-xs font-semibold px-2.5 py-1 rounded-full"><i class="fa-regular fa-clock mr-1"></i>${recipe.time}</span>
+                            </div>
+                            <p class="text-xs text-slate-500 mb-4 leading-relaxed">${recipe.steps}</p>
+                            
+                            <div class="mb-4">
+                                <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Ingredients Needed:</h4>
+                                <div class="flex flex-wrap gap-1.5">
+                                    ${recipe.ingredients.map(ing => `<span class="px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium">${ing}</span>`).join('')}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pt-4 border-t border-slate-100 flex items-center justify-between">
+                            <span class="text-xs font-semibold ${recipe.usesExpiring ? 'text-emerald-600' : 'text-slate-500'}">
+                                ${recipe.usesExpiring ? '✨ Uses Expiring Ingredients' : 'Standard Recipe'}
+                            </span>
+                            <button onclick="showToast('Recipe selected!')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-sm">Cook This</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // --- Reports & Analytics Charts Render ---
+        function renderAnalyticsCharts() {
+            // Category Distribution
+            const categories = {};
+            inventory.forEach(i => {
+                categories[i.category] = (categories[i.category] || 0) + 1;
+            });
+
+            const ctxCat = document.getElementById('analyticsCategoryChart').getContext('2d');
+            if (analyticsCategoryChartInstance) analyticsCategoryChartInstance.destroy();
+            analyticsCategoryChartInstance = new Chart(ctxCat, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(categories),
+                    datasets: [{
+                        data: Object.values(categories),
+                        backgroundColor: ['#10b981', '#059669', '#34d399', '#6ee7b7', '#047857', '#065f46', '#a7f3d0', '#047857']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
+                }
+            });
+
+            // Discard Reasons breakdown
+            const reasons = {};
+            activityLogs.filter(l => l.action === 'Discarded').forEach(l => {
+                const r = l.reason || 'Other';
+                reasons[r] = (reasons[r] || 0) + 1;
+            });
+
+            const ctxWaste = document.getElementById('analyticsWasteReasonChart').getContext('2d');
+            if (analyticsWasteReasonChartInstance) analyticsWasteReasonChartInstance.destroy();
+            analyticsWasteReasonChartInstance = new Chart(ctxWaste, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(reasons).length > 0 ? Object.keys(reasons) : ['Spoilage', 'Forgotten Expiry', 'Over-purchasing'],
+                    datasets: [{
+                        label: 'Disposal Count',
+                        data: Object.keys(reasons).length > 0 ? Object.values(reasons) : [3, 2, 1],
+                        backgroundColor: '#f43f5e',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, grid: { borderDash: [4, 4] } }, x: { grid: { display: false } } }
+                }
+            });
+        }
+
+        // --- Shopping List Management ---
+        function renderShoppingList() {
+            const tbody = document.getElementById('shopping-table-body');
+            const emptyState = document.getElementById('shopping-empty-state');
+            
+            let totalCost = 0;
+            shoppingList.forEach(item => {
+                if (!item.purchased) totalCost += Number(item.price || 0);
+            });
+            document.getElementById('shopping-total-cost').innerText = `${userSettings.currency}${totalCost.toFixed(0)}`;
+
+            if (shoppingList.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            tbody.innerHTML = shoppingList.map(item => `
+                <tr class="hover:bg-slate-50 border-b border-slate-100 ${item.purchased ? 'opacity-50 line-through' : ''}">
+                    <td class="py-3 px-4">
+                        <input type="checkbox" ${item.purchased ? 'checked' : ''} onchange="toggleShoppingItem('${item.id}')" class="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4 cursor-pointer">
+                    </td>
+                    <td class="py-3 px-4 font-semibold text-slate-900">${item.name}</td>
+                    <td class="py-3 px-4">${item.quantity}</td>
+                    <td class="py-3 px-4">${userSettings.currency}${item.price}</td>
+                    <td class="py-3 px-4 text-right">
+                        <button onclick="deleteShoppingItem('${item.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg"><i class="fa-solid fa-trash"></i></button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function handleShoppingFormSubmit(event) {
+            event.preventDefault();
+            const newItem = {
+                id: 'shop_' + Date.now(),
+                name: document.getElementById('shop-name').value.trim(),
+                quantity: document.getElementById('shop-qty').value.trim(),
+                price: Number(document.getElementById('shop-price').value),
+                purchased: false
+            };
+
+            shoppingList.push(newItem);
+            saveShopping();
+            renderShoppingList();
+            document.getElementById('shop-name').value = '';
+            document.getElementById('shop-qty').value = '';
+            document.getElementById('shop-price').value = '';
+            showToast('Added item to shopping list!');
+        }
+
+        function toggleShoppingItem(id) {
+            const item = shoppingList.find(i => i.id === id);
+            if (item) {
+                item.purchased = !item.purchased;
+                saveShopping();
+                renderShoppingList();
+            }
+        }
+
+        function deleteShoppingItem(id) {
+            shoppingList = shoppingList.filter(i => i.id !== id);
+            saveShopping();
+            renderShoppingList();
+        }
+
+        // --- Settings & CSV Export/Import ---
+        function updateUserSettings() {
+            userSettings.name = document.getElementById('setting-username').value.trim() || 'John Doe';
+            userSettings.currency = document.getElementById('setting-currency').value;
+            localStorage.setItem('freshtrack_settings', JSON.stringify(userSettings));
+            updateHeaderProfile();
+            showToast('Settings updated successfully.');
+        }
+
+        function updateHeaderProfile() {
+            document.getElementById('header-user-name').innerText = userSettings.name;
+            document.getElementById('sidebar-user-name').innerText = userSettings.name;
+            const initials = userSettings.name.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase();
+            document.getElementById('header-user-avatar').innerText = initials;
+            document.getElementById('sidebar-user-avatar').innerText = initials;
+            document.getElementById('currency-symbol-label').innerText = userSettings.currency;
+        }
+
+        function exportInventoryCSV() {
+            if (inventory.length === 0) {
+                showToast('Inventory is empty, nothing to export.', 'error');
+                return;
+            }
+
+            let csvContent = "data:text/csv;charset=utf-8,ID,Name,Category,Quantity,Unit,PurchaseDate,ExpiryDate,Location,Price,Notes\r\n";
+            inventory.forEach(i => {
+                csvContent += `"${i.id}","${i.name}","${i.category}",${i.quantity},"${i.unit}","${i.purchaseDate}","${i.expiryDate}","${i.location}",${i.price},"${i.notes || ''}"\r\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', `freshtrack_inventory_${new Date().toISOString().split('T')[0]}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('Inventory successfully exported to CSV!');
+        }
+
+        function importInventoryCSV(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const lines = text.split('\n');
+                if (lines.length < 2) {
+                    showToast('Invalid CSV file format.', 'error');
+                    return;
+                }
+
+                let importedCount = 0;
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+                    const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+                    if (cols.length >= 8) {
+                        const clean = cols.map(c => c.replace(/^"|"$/g, '').trim());
+                        inventory.push({
+                            id: clean[0] || 'item_' + Date.now() + i,
+                            name: clean[1],
+                            category: clean[2],
+                            quantity: Number(clean[3]) || 1,
+                            unit: clean[4] || 'pieces',
+                            purchaseDate: clean[5] || getOffsetDate(0),
+                            expiryDate: clean[6] || getOffsetDate(5),
+                            location: clean[7] || 'Refrigerator',
+                            price: Number(clean[8]) || 50,
+                            notes: clean[9] || ''
+                        });
+                        importedCount++;
+                    }
+                }
+
+                refreshAllData();
+                showToast(`Successfully imported ${importedCount} items from CSV!`);
+            };
+            reader.readAsText(file);
+        }
+
+        function loadDemoData() {
+            inventory = demoDataset;
+            refreshAllData();
+            showToast('Loaded sample demo dataset successfully!');
+        }
+
+        function clearAllDataConfirm() {
+            if (!confirm('Are you sure you want to clear all inventory, logs, and shopping data?')) return;
+            localStorage.clear();
+            inventory = [];
+            activityLogs = [];
+            shoppingList = [];
+            refreshAllData();
+            showToast('All local storage data cleared.', 'error');
+        }
+
+        function handleGlobalSearch(event) {
+            const query = event.target.value.toLowerCase();
+            if (query.trim().length > 0) {
+                switchTab('inventory');
+                document.getElementById('inv-search').value = query;
+                renderInventoryTable();
+            }
+        }
+    </script>
+</body>
+</html>
